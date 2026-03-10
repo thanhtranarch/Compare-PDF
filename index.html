@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Compare — DQT</title>
+<meta name="description" content="Free browser-based PDF comparison tool. Compare two PDF revisions side-by-side with Overlay, Pixel Diff, and Swipe modes. No upload required — 100% client-side.">
+<meta name="keywords" content="PDF compare, PDF diff, PDF comparison, pixel diff, overlay PDF, browser tool">
+<meta name="author" content="Dang Quoc Truong (DQT)">
+<meta property="og:title" content="PDF Compare — DQT">
+<meta property="og:description" content="Compare two PDF revisions visually in your browser. Overlay, Pixel Diff and Swipe modes. 100% private, no server upload.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="PDF Compare — DQT">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231A1D27'/><text x='16' y='23' text-anchor='middle' font-size='20' font-family='sans-serif' font-weight='700' fill='%23F0CC88'>&#916;</text></svg>">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #0F1117;
+    --surface: #1A1D27;
+    --surface2: #242836;
+    --border: #2E3345;
+    --text: #E8E9ED;
+    --text2: #8B8FA3;
+    --accent: #F0CC88;
+    --accent2: #C89650;
+    --red: #FF6B6B;
+    --green: #51CF66;
+    --blue: #74C0FC;
+    --radius: 8px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; }
+  body {
+    font-family:'DM Sans',sans-serif;
+    background:var(--bg); color:var(--text);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+
+  /* ── Header ── */
+  .header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 16px; background:var(--surface);
+    border-bottom:1px solid var(--border); flex-shrink:0; z-index:100;
+  }
+  .logo { display:flex; align-items:center; gap:8px; }
+  .logo-icon {
+    width:30px; height:30px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    border-radius:6px; display:flex; align-items:center; justify-content:center;
+    font-size:16px; font-weight:700; color:var(--bg); line-height:1;
+  }
+  .logo h1 { font-size:15px; font-weight:700; letter-spacing:-.2px; }
+  .logo h1 span { color:var(--accent); }
+  .logo-badge {
+    font-family:'JetBrains Mono',monospace; font-size:9px;
+    padding:2px 6px; border-radius:3px;
+    background:rgba(116,192,252,.12); color:var(--blue);
+    border:1px solid rgba(116,192,252,.25); letter-spacing:.5px;
+  }
+  .header-actions { display:flex; align-items:center; gap:6px; }
+
+  /* ── Buttons ── */
+  .btn {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:6px 12px; border-radius:6px;
+    border:1px solid var(--border); background:var(--surface2);
+    color:var(--text); font-family:inherit; font-size:11px; font-weight:500;
+    cursor:pointer; transition:all .15s; white-space:nowrap;
+  }
+  .btn:hover { border-color:var(--accent); color:var(--accent); }
+  .btn-primary {
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:var(--bg); border:none; font-weight:600;
+  }
+  .btn-primary:hover { opacity:.88; color:var(--bg); }
+  .btn-primary:disabled { opacity:.35; cursor:not-allowed; }
+  .btn-sm { padding:3px 8px; font-size:10px; }
+  .btn-icon { padding:5px 7px; font-size:12px; }
+
+  /* ── Upload section ── */
+  .upload-section {
+    display:flex; gap:12px; padding:14px 16px; flex-shrink:0;
+  }
+  .upload-section.collapsed { display:none; }
+  .upload-card {
+    flex:1; background:var(--surface); border:2px dashed var(--border);
+    border-radius:var(--radius); padding:28px 16px; text-align:center;
+    cursor:pointer; transition:all .2s; position:relative; overflow:hidden;
+  }
+  .upload-card::before {
+    content:''; position:absolute; inset:0; opacity:0;
+    background:radial-gradient(circle at 50% 50%, rgba(240,204,136,.06) 0%, transparent 70%);
+    transition:opacity .2s;
+  }
+  .upload-card:hover { border-color:var(--accent); background:var(--surface2); }
+  .upload-card:hover::before { opacity:1; }
+  .upload-card.drag-over { border-color:var(--accent); background:var(--surface2); border-style:solid; }
+  .upload-card.loaded { border-style:solid; border-color:var(--green); }
+  .upload-card .label {
+    font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:500;
+    color:var(--accent); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;
+  }
+  .upload-card .icon { font-size:28px; margin-bottom:6px; opacity:.45; transition:opacity .2s; }
+  .upload-card.loaded .icon { opacity:.85; }
+  .upload-card .title { font-size:14px; font-weight:600; margin-bottom:3px; }
+  .upload-card .subtitle { font-size:11px; color:var(--text2); }
+  .upload-card .filename {
+    font-family:'JetBrains Mono',monospace; font-size:10px;
+    color:var(--green); margin-top:8px; word-break:break-all;
+  }
+  .upload-card .page-count {
+    font-family:'JetBrains Mono',monospace; font-size:9px;
+    color:var(--text2); margin-top:2px;
+  }
+  .upload-card input { display:none; }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    display:none; align-items:center; gap:8px;
+    padding:6px 16px; flex-shrink:0; flex-wrap:wrap;
+    background:var(--surface); border-bottom:1px solid var(--border);
+  }
+  .toolbar.visible { display:flex; }
+  .mode-group {
+    display:flex; background:var(--bg);
+    border:1px solid var(--border); border-radius:6px; overflow:hidden;
+  }
+  .mode-btn {
+    padding:5px 11px; font-family:inherit; font-size:11px; font-weight:500;
+    border:none; background:transparent; color:var(--text2); cursor:pointer;
+    transition:all .15s;
+  }
+  .mode-btn:hover { color:var(--text); background:var(--surface2); }
+  .mode-btn.active { background:var(--accent); color:var(--bg); font-weight:600; }
+  .separator { width:1px; height:22px; background:var(--border); margin:0 2px; flex-shrink:0; }
+  .slider-group { display:flex; align-items:center; gap:6px; }
+  .slider-group label { font-size:11px; color:var(--text2); font-weight:500; white-space:nowrap; }
+  .slider-group input[type="range"] {
+    -webkit-appearance:none; width:80px; height:4px;
+    background:var(--border); border-radius:2px; outline:none; cursor:pointer;
+  }
+  .slider-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--accent); cursor:pointer; box-shadow:0 0 0 2px var(--bg);
+  }
+  .slider-group .slider-val {
+    font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--accent);
+    min-width:30px;
+  }
+  .zoom-display {
+    font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text2);
+    min-width:36px; text-align:center; cursor:pointer; padding:2px 4px;
+    border-radius:3px; border:1px solid transparent;
+    transition:border-color .15s;
+  }
+  .zoom-display:hover { border-color:var(--border); color:var(--text); }
+  .tool-right { display:flex; align-items:center; gap:5px; margin-left:auto; flex-shrink:0; }
+  .page-info {
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text2);
+    min-width:40px; text-align:center;
+  }
+
+  /* ── Legend ── */
+  .legend { display:none; align-items:center; gap:16px; padding:4px 16px 5px; flex-shrink:0; }
+  .legend.visible { display:flex; }
+  .legend-item { display:flex; align-items:center; gap:5px; font-size:10px; color:var(--text2); }
+  .legend-dot { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+
+  /* ── View area ── */
+  .view-area {
+    flex:1; overflow:auto; position:relative;
+    background:var(--surface); margin:8px; border-radius:var(--radius);
+    border:1px solid var(--border);
+  }
+  /* Canvas is rendered at exact pixel size — no CSS scaling needed (vector-sharp) */
+  .view-area canvas { display:block; image-rendering:auto; }
+
+  /* ── Welcome screen ── */
+  .welcome {
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:12px;
+    pointer-events:none; padding:20px;
+  }
+  .welcome-icon {
+    width:56px; height:56px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    border-radius:12px; display:flex; align-items:center; justify-content:center;
+    font-size:28px; color:var(--bg); font-weight:700;
+    box-shadow:0 8px 32px rgba(240,204,136,.2);
+  }
+  .welcome h2 { font-size:16px; color:var(--text2); font-weight:500; text-align:center; }
+  .welcome-steps {
+    display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:4px;
+  }
+  .welcome-step {
+    display:flex; align-items:center; gap:6px;
+    background:var(--surface2); border:1px solid var(--border);
+    border-radius:6px; padding:6px 10px;
+    font-size:11px; color:var(--text2);
+  }
+  .step-num {
+    width:18px; height:18px; border-radius:50%;
+    background:var(--accent); color:var(--bg);
+    font-size:10px; font-weight:700; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  /* ── Swipe ── */
+  .swipe-wrap { position:relative; display:inline-block; }
+  .swipe-old-clip {
+    position:absolute; top:0; left:0; bottom:0;
+    overflow:hidden; pointer-events:none;
+  }
+  .swipe-old-clip canvas { display:block; }
+  .swipe-handle {
+    position:absolute; top:0; bottom:0; width:3px;
+    background:var(--accent); cursor:ew-resize; z-index:20;
+    box-shadow:0 0 12px rgba(240,204,136,.4);
+  }
+  .swipe-handle::before {
+    content:''; position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    width:30px; height:30px; border-radius:50%;
+    background:var(--accent); border:3px solid var(--bg);
+    box-shadow:0 2px 12px rgba(0,0,0,.6);
+  }
+  .swipe-handle::after {
+    content:'< >'; position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    font-size:8px; font-weight:700; color:var(--bg);
+    font-family:'JetBrains Mono',monospace; letter-spacing:-1px;
+  }
+  .swipe-label {
+    position:absolute; top:8px; z-index:15;
+    font-family:'JetBrains Mono',monospace;
+    font-size:9px; font-weight:600; letter-spacing:.5px;
+    padding:3px 8px; border-radius:3px;
+    background:rgba(15,17,23,.85); color:var(--accent);
+    border:1px solid rgba(240,204,136,.2);
+  }
+  .swipe-label-old { left:8px; }
+  .swipe-label-new { right:8px; }
+
+  /* ── Loading spinner ── */
+  .spinner {
+    display:inline-block; width:13px; height:13px;
+    border:2px solid rgba(240,204,136,.3); border-top-color:var(--accent);
+    border-radius:50%; animation:spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* ── Progress bar ── */
+  .progress-bar {
+    position:fixed; top:0; left:0; right:0; height:2px;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));
+    transform:scaleX(0); transform-origin:left;
+    transition:transform .25s ease; z-index:9999;
+  }
+  .progress-bar.active { transform:scaleX(var(--p,0)); }
+
+  /* ── Footer ── */
+  .footer {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:5px 16px; flex-shrink:0;
+    font-size:9px; color:var(--text2);
+    font-family:'JetBrains Mono',monospace;
+    background:var(--surface); border-top:1px solid var(--border);
+  }
+  .footer-left { display:flex; align-items:center; gap:6px; }
+  .footer a { color:var(--text2); text-decoration:none; }
+  .footer a:hover { color:var(--accent); }
+  .status-dot { display:inline-block; width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+  .status-dot.ready { background:var(--green); box-shadow:0 0 4px var(--green); }
+  .status-dot.waiting { background:var(--text2); }
+  .status-dot.processing { background:var(--accent); animation:pulse .8s ease-in-out infinite alternate; }
+  @keyframes pulse { to { opacity:.25; } }
+
+  /* ── Scrollbar ── */
+  .view-area::-webkit-scrollbar { width:8px; height:8px; }
+  .view-area::-webkit-scrollbar-track { background:transparent; }
+  .view-area::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
+  .view-area::-webkit-scrollbar-thumb:hover { background:var(--text2); }
+
+  @media(max-width:768px){
+    .upload-section { flex-direction:column; padding:10px; }
+    .header { padding:8px 10px; }
+    .logo-badge { display:none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress-bar" id="progressBar"></div>
+
+<!-- Header -->
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon">&#916;</div>
+    <h1>PDF <span>Compare</span></h1>
+    <span class="logo-badge">CLIENT-SIDE</span>
+  </div>
+  <div class="header-actions">
+    <button class="btn" id="toggleUploadBtn" style="display:none" onclick="toggleUpload()">Show Files</button>
+    <button class="btn" onclick="resetAll()">&#8635; Reset</button>
+    <button class="btn" id="exportPageBtn" style="display:none" onclick="exportPDF('current')">Export Page</button>
+    <button class="btn" id="exportAllBtn" style="display:none" onclick="exportPDF('all')">Export All</button>
+    <button class="btn btn-primary" id="compareBtn" disabled onclick="runCompare()">&#9654; Compare</button>
+  </div>
+</div>
+
+<!-- Upload -->
+<div class="upload-section" id="uploadSection">
+  <div class="upload-card" id="dropOld" onclick="document.getElementById('fileOld').click()">
+    <div class="label">&#x25C0; Old Revision</div>
+    <div class="icon">&#128196;</div>
+    <div class="title">Drop PDF here</div>
+    <div class="subtitle">or click to browse</div>
+    <div class="filename" id="nameOld"></div>
+    <div class="page-count" id="pagesOld"></div>
+    <input type="file" id="fileOld" accept=".pdf" onchange="handleFile(this,'old')">
+  </div>
+  <div class="upload-card" id="dropNew" onclick="document.getElementById('fileNew').click()">
+    <div class="label">New Revision &#x25B6;</div>
+    <div class="icon">&#128196;</div>
+    <div class="title">Drop PDF here</div>
+    <div class="subtitle">or click to browse</div>
+    <div class="filename" id="nameNew"></div>
+    <div class="page-count" id="pagesNew"></div>
+    <input type="file" id="fileNew" accept=".pdf" onchange="handleFile(this,'new')">
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar" id="toolbar">
+  <div class="mode-group">
+    <button class="mode-btn active" data-mode="overlay" onclick="setMode('overlay')">Overlay</button>
+    <button class="mode-btn" data-mode="diff" onclick="setMode('diff')">Pixel Diff</button>
+    <button class="mode-btn" data-mode="swipe" onclick="setMode('swipe')">Swipe</button>
+  </div>
+  <div class="separator"></div>
+  <div class="slider-group" id="opacityGroup">
+    <label>Opacity</label>
+    <input type="range" min="0" max="100" value="50" id="opacitySlider" oninput="updateOpacity(this.value)">
+    <span class="slider-val" id="opacityVal">50%</span>
+  </div>
+  <div class="slider-group" id="thresholdGroup" style="display:none">
+    <label>Threshold</label>
+    <input type="range" min="5" max="80" value="30" id="thresholdSlider" oninput="updateThreshold(this.value)">
+    <span class="slider-val" id="thresholdVal">30</span>
+  </div>
+  <div class="tool-right">
+    <button class="btn btn-sm" onclick="changePage(-1)">&#8592;</button>
+    <span class="page-info" id="pageInfo">1/1</span>
+    <button class="btn btn-sm" onclick="changePage(1)">&#8594;</button>
+    <div class="separator"></div>
+    <button class="btn btn-sm" title="Fit page (F)" onclick="setZoom('fit')">Fit</button>
+    <button class="btn btn-sm" title="Fit width (W)" onclick="setZoom('width')">Width</button>
+    <button class="btn btn-sm btn-icon" title="Zoom 100%" onclick="setZoom(1)">100%</button>
+    <button class="btn btn-sm btn-icon" title="Zoom out (-)" onclick="zoomBy(-0.2)">&#8722;</button>
+    <span class="zoom-display" id="zoomDisplay" title="Click to reset zoom" onclick="setZoom('fit')">Fit</span>
+    <button class="btn btn-sm btn-icon" title="Zoom in (+)" onclick="zoomBy(0.2)">+</button>
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="legend" id="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Removed (Old only)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Added (New only)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#888"></div>Unchanged</div>
+</div>
+
+<!-- View area -->
+<div class="view-area" id="viewArea">
+  <div class="welcome" id="welcome">
+    <div class="welcome-icon">&#916;</div>
+    <h2>Compare two PDF revisions visually</h2>
+    <div class="welcome-steps">
+      <div class="welcome-step"><span class="step-num">1</span>Upload Old PDF</div>
+      <div class="welcome-step"><span class="step-num">2</span>Upload New PDF</div>
+      <div class="welcome-step"><span class="step-num">3</span>Click Compare</div>
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <div class="footer-left">
+    <span class="status-dot waiting" id="statusDot"></span>
+    <span id="statusText">Waiting for PDF files...</span>
+  </div>
+  <div>
+    <span style="opacity:.4">Copyright &copy; </span>
+    <a href="#" title="Dang Quoc Truong">Dang Quoc Truong (DQT)</a>
+    &nbsp;&mdash;&nbsp;100% client-side &bull; no server upload
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+/* ─────────────────────────── STATE ─────────────────────────── */
+var pdfOld = null, pdfNew = null;
+// Rendered canvases at current renderScale
+var imgOld = null, imgNew = null;
+var currentMode = 'overlay';
+var currentPage = 1, maxPages = 1;
+var opacity = 0.5, threshold = 30;
+
+/*
+ * ZOOM  — three variants:
+ *   'fit'   → scale to fill viewArea (both W and H)
+ *   'width' → scale to fill viewArea width only
+ *   number  → explicit zoom factor (1 = 100%, 2 = 200%, …)
+ *
+ * KEY INSIGHT: instead of rendering once at a fixed scale and then
+ * CSS-scaling the <canvas>, we render at the EXACT pixel resolution
+ * needed for the current zoom level.  PDF.js uses vector data so
+ * every re-render is pixel-perfect at any zoom — no blur ever.
+ */
+var zoomMode = 'fit';  // current user zoom setting
+var renderScale = 1;   // last actually-used render scale (set in calcRenderScale)
+
+var DPR = Math.min(window.devicePixelRatio || 1, 2); // respect HiDPI, cap at 2×
+
+var renderVersion = 0; // increment to cancel stale renders
+
+/* ─────────────────────────── PROGRESS ─────────────────────────── */
+function setProgress(v) {
+  var bar = document.getElementById('progressBar');
+  bar.style.setProperty('--p', Math.min(1, Math.max(0, v)));
+  bar.classList.add('active');
+  if (v >= 1) setTimeout(function () { bar.classList.remove('active'); }, 350);
+}
+
+/* ─────────────────────────── DRAG & DROP ─────────────────────────── */
+['dropOld', 'dropNew'].forEach(function (id) {
+  var el = document.getElementById(id);
+  el.addEventListener('dragover', function (e) { e.preventDefault(); el.classList.add('drag-over'); });
+  el.addEventListener('dragleave', function () { el.classList.remove('drag-over'); });
+  el.addEventListener('drop', function (e) {
+    e.preventDefault(); el.classList.remove('drag-over');
+    var f = e.dataTransfer.files[0];
+    if (f && f.type === 'application/pdf') loadPDF(f, id === 'dropOld' ? 'old' : 'new');
+  });
+});
+
+function handleFile(inp, which) { if (inp.files[0]) loadPDF(inp.files[0], which); }
+
+async function loadPDF(file, which) {
+  setStatus('processing', 'Loading ' + (which === 'old' ? 'old' : 'new') + ' PDF…');
+  setProgress(0.3);
+  var buf = await file.arrayBuffer();
+  var pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  setProgress(1);
+  if (which === 'old') {
+    pdfOld = pdf;
+    document.getElementById('dropOld').classList.add('loaded');
+    document.getElementById('nameOld').textContent = file.name;
+    document.getElementById('pagesOld').textContent = pdf.numPages + ' page' + (pdf.numPages !== 1 ? 's' : '');
+  } else {
+    pdfNew = pdf;
+    document.getElementById('dropNew').classList.add('loaded');
+    document.getElementById('nameNew').textContent = file.name;
+    document.getElementById('pagesNew').textContent = pdf.numPages + ' page' + (pdf.numPages !== 1 ? 's' : '');
+  }
+  if (pdfOld && pdfNew) {
+    document.getElementById('compareBtn').disabled = false;
+    setStatus('ready', 'Both files ready — click Compare');
+  } else {
+    setStatus('waiting', (which === 'old' ? 'Old' : 'New') + ' PDF loaded — waiting for the other…');
+  }
+}
+
+/* ─────────────────────────── SCALE CALC ─────────────────────────── */
+/*
+ * Returns the render scale for PDF.js so that the resulting canvas
+ * pixel dimensions match the desired display size exactly.
+ * We pass this scale directly to page.getViewport({scale}).
+ *
+ * DPR is baked in so the canvas is crisp on HiDPI screens too.
+ */
+function calcRenderScale(pdfPageOrViewport) {
+  // pdfPageOrViewport: a PDF page object or {width, height} in PDF points (1pt = 1/72 in)
+  var area = document.getElementById('viewArea');
+  var aW = area.clientWidth - 16;   // leave a small margin
+  var aH = area.clientHeight - 16;
+  var ptW = pdfPageOrViewport.width  || pdfPageOrViewport.getViewport({ scale: 1 }).width;
+  var ptH = pdfPageOrViewport.height || pdfPageOrViewport.getViewport({ scale: 1 }).height;
+
+  var s;
+  if (zoomMode === 'fit') {
+    s = Math.min(aW / ptW, aH / ptH);
+  } else if (zoomMode === 'width') {
+    s = aW / ptW;
+  } else {
+    s = zoomMode; // numeric
+  }
+  return s * DPR; // HiDPI: multiply by device pixel ratio
+}
+
+/* ─────────────────────────── PAGE SIZE from PDF ─────────────────────────── */
+// Returns the native size (in PDF points) for a given page number
+async function getPageSize(pdf, num) {
+  if (!pdf || num > pdf.numPages) return null;
+  var page = await pdf.getPage(num);
+  var vp = page.getViewport({ scale: 1 });
+  return { width: vp.width, height: vp.height };
+}
+
+/* ─────────────────────────── RENDER PAGE ─────────────────────────── */
+/*
+ * Renders one PDF page at `scale` (PDF units × scale = canvas pixels).
+ * Returns an HTMLCanvasElement whose pixel dimensions equal the display
+ * dimensions (no CSS transform needed → always sharp).
+ */
+async function renderPage(pdf, num, scale) {
+  if (!pdf || num > pdf.numPages) return null;
+  var page = await pdf.getPage(num);
+  var vp = page.getViewport({ scale: scale });
+  var c = document.createElement('canvas');
+  c.width  = Math.round(vp.width);
+  c.height = Math.round(vp.height);
+  var ctx = c.getContext('2d');
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  return c;
+}
+
+/* ─────────────────────────── COMPARE ─────────────────────────── */
+async function runCompare() {
+  var btn = document.getElementById('compareBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Processing…';
+  setStatus('processing', 'Rendering…');
+  setProgress(0.1);
+
+  maxPages = Math.max(pdfOld.numPages, pdfNew.numPages);
+  currentPage = 1;
+  await renderAndDraw();
+
+  btn.disabled = false;
+  btn.innerHTML = '&#9654; Compare';
+  document.getElementById('toolbar').classList.add('visible');
+  document.getElementById('exportPageBtn').style.display = '';
+  document.getElementById('exportAllBtn').style.display = '';
+  document.getElementById('toggleUploadBtn').style.display = '';
+  document.getElementById('uploadSection').classList.add('collapsed');
+  document.getElementById('welcome').style.display = 'none';
+  updatePageInfo();
+  setProgress(1);
+  setStatus('ready', 'Done — page ' + currentPage + ' of ' + maxPages);
+}
+
+/* ─────────────────────────── RENDER + DRAW (main) ─────────────────────────── */
+var renderTimer = null;
+
+/*
+ * Determines the correct render scale (from zoomMode + viewport),
+ * renders both pages at that exact scale via PDF.js, then draws the result.
+ * This is the only place pixels touch the canvas — CSS scaling is never used.
+ */
+async function renderAndDraw(opts) {
+  opts = opts || {};
+  renderVersion++;
+  var ver = renderVersion;
+
+  // Determine render scale from the reference page (prefer Old, fall back to New)
+  var refPdf = pdfOld || pdfNew;
+  var refNum = currentPage <= refPdf.numPages ? currentPage : refPdf.numPages;
+  var refPage = await refPdf.getPage(refNum);
+  if (ver !== renderVersion) return; // stale
+
+  var scale = calcRenderScale(refPage.getViewport({ scale: 1 }));
+  renderScale = scale;
+  updateZoomDisplay();
+
+  setProgress(0.4);
+  var results = await Promise.all([
+    renderPage(pdfOld, currentPage, scale),
+    renderPage(pdfNew, currentPage, scale)
+  ]);
+  if (ver !== renderVersion) return; // stale
+
+  imgOld = results[0];
+  imgNew = results[1];
+  setProgress(0.85);
+  drawComposite();
+  setProgress(1);
+}
+
+/* Lightweight redraw for sliders (opacity / threshold) — no re-render needed */
+function repaintOnly() {
+  if (!imgOld && !imgNew) return;
+  if (currentMode === 'overlay') repaintOverlay();
+  else if (currentMode === 'diff') repaintDiff();
+  // swipe: just re-draws the DOM, cheap
+  else if (currentMode === 'swipe') drawComposite();
+}
+
+/* ─────────────────────────── COMPOSITE DRAW ─────────────────────────── */
+var activeCanvas = null;
+
+function drawComposite() {
+  var area = document.getElementById('viewArea');
+  // Keep scroll
+  var sl = area.scrollLeft, st = area.scrollTop;
+  area.innerHTML = '';
+  activeCanvas = null;
+  document.getElementById('legend').classList.remove('visible');
+
+  if (currentMode === 'overlay') buildOverlay(area);
+  else if (currentMode === 'diff') buildDiff(area);
+  else if (currentMode === 'swipe') buildSwipe(area);
+
+  requestAnimationFrame(function () {
+    area.scrollLeft = sl;
+    area.scrollTop = st;
+  });
+}
+
+function repaintOverlay() {
+  if (!activeCanvas) return;
+  var w = activeCanvas.width, h = activeCanvas.height;
+  var ctx = activeCanvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#FFF'; ctx.fillRect(0, 0, w, h);
+  if (imgOld) { ctx.globalAlpha = 1 - opacity; ctx.drawImage(imgOld, 0, 0); }
+  if (imgNew) { ctx.globalAlpha = opacity;     ctx.drawImage(imgNew, 0, 0); }
+  ctx.globalAlpha = 1;
+}
+
+function repaintDiff() {
+  if (!activeCanvas || !imgOld || !imgNew) return;
+  var w = activeCanvas.width, h = activeCanvas.height;
+  var dO = imgOld.getContext('2d').getImageData(0, 0, imgOld.width, imgOld.height);
+  var dN = imgNew.getContext('2d').getImageData(0, 0, imgNew.width, imgNew.height);
+  var ctx = activeCanvas.getContext('2d');
+  var out = ctx.createImageData(w, h);
+  pixelDiff(dO, dN, out, w, h, imgOld.width, imgOld.height, imgNew.width, imgNew.height);
+  ctx.putImageData(out, 0, 0);
+}
+
+function buildOverlay(area) {
+  var w = Math.max(imgOld ? imgOld.width : 0, imgNew ? imgNew.width : 0);
+  var h = Math.max(imgOld ? imgOld.height : 0, imgNew ? imgNew.height : 0);
+  var c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  // No CSS width/height needed — canvas pixel size IS the display size
+  var ctx = c.getContext('2d');
+  ctx.fillStyle = '#FFF'; ctx.fillRect(0, 0, w, h);
+  if (imgOld) { ctx.globalAlpha = 1 - opacity; ctx.drawImage(imgOld, 0, 0); }
+  if (imgNew) { ctx.globalAlpha = opacity;     ctx.drawImage(imgNew, 0, 0); }
+  ctx.globalAlpha = 1;
+  area.appendChild(c);
+  activeCanvas = c;
+}
+
+function buildDiff(area) {
+  document.getElementById('legend').classList.add('visible');
+  if (!imgOld || !imgNew) return;
+  var w = Math.max(imgOld.width, imgNew.width);
+  var h = Math.max(imgOld.height, imgNew.height);
+  var dO = imgOld.getContext('2d').getImageData(0, 0, imgOld.width, imgOld.height);
+  var dN = imgNew.getContext('2d').getImageData(0, 0, imgNew.width, imgNew.height);
+  var c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  var ctx = c.getContext('2d');
+  var out = ctx.createImageData(w, h);
+  pixelDiff(dO, dN, out, w, h, imgOld.width, imgOld.height, imgNew.width, imgNew.height);
+  ctx.putImageData(out, 0, 0);
+  area.appendChild(c);
+  activeCanvas = c;
+}
+
+function buildSwipe(area) {
+  var dW = Math.max(imgOld ? imgOld.width : 0, imgNew ? imgNew.width : 0);
+  var dH = Math.max(imgOld ? imgOld.height : 0, imgNew ? imgNew.height : 0);
+
+  var wrap = document.createElement('div');
+  wrap.className = 'swipe-wrap';
+  wrap.style.width = dW + 'px'; wrap.style.height = dH + 'px';
+
+  // NEW (background)
+  var cN = document.createElement('canvas');
+  cN.width = dW; cN.height = dH;
+  if (imgNew) cN.getContext('2d').drawImage(imgNew, 0, 0);
+  else { var tx = cN.getContext('2d'); tx.fillStyle = '#FFF'; tx.fillRect(0, 0, dW, dH); }
+  wrap.appendChild(cN);
+
+  // OLD (clipped, left half)
+  var clip = document.createElement('div');
+  clip.className = 'swipe-old-clip';
+  clip.style.width = (dW / 2) + 'px';
+  var cO = document.createElement('canvas');
+  cO.width = dW; cO.height = dH;
+  if (imgOld) cO.getContext('2d').drawImage(imgOld, 0, 0);
+  else { var tx2 = cO.getContext('2d'); tx2.fillStyle = '#FFF'; tx2.fillRect(0, 0, dW, dH); }
+  clip.appendChild(cO);
+  wrap.appendChild(clip);
+
+  // Handle
+  var handle = document.createElement('div');
+  handle.className = 'swipe-handle';
+  handle.style.left = (dW / 2) + 'px';
+  wrap.appendChild(handle);
+
+  // Labels
+  var lOld = document.createElement('div');
+  lOld.className = 'swipe-label swipe-label-old'; lOld.textContent = 'OLD';
+  wrap.appendChild(lOld);
+  var lNew = document.createElement('div');
+  lNew.className = 'swipe-label swipe-label-new'; lNew.textContent = 'NEW';
+  wrap.appendChild(lNew);
+
+  area.appendChild(wrap);
+
+  var dragging = false;
+  function onMove(e) {
+    if (!dragging) return;
+    var rect = wrap.getBoundingClientRect();
+    var cx = (e.clientX !== undefined ? e.clientX : e.touches[0].clientX) - rect.left;
+    cx = Math.max(0, Math.min(dW, cx));
+    clip.style.width = cx + 'px';
+    handle.style.left = cx + 'px';
+  }
+  wrap.addEventListener('mousedown', function (e) { dragging = true; onMove(e); });
+  wrap.addEventListener('touchstart', function (e) { dragging = true; onMove(e); }, { passive: true });
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('touchmove', onMove, { passive: true });
+  document.addEventListener('mouseup', function () { dragging = false; });
+  document.addEventListener('touchend', function () { dragging = false; });
+}
+
+/* ─────────────────────────── PIXEL DIFF ─────────────────────────── */
+function pixelDiff(dO, dN, out, w, h, oW, oH, nW, nH) {
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      var i = (y * w + x) * 4;
+      var rO=255,gO=255,bO=255, rN=255,gN=255,bN=255;
+      if (x < oW && y < oH) { var j=(y*oW+x)*4; rO=dO.data[j]; gO=dO.data[j+1]; bO=dO.data[j+2]; }
+      if (x < nW && y < nH) { var k=(y*nW+x)*4; rN=dN.data[k]; gN=dN.data[k+1]; bN=dN.data[k+2]; }
+      var dd = Math.abs(rO-rN)+Math.abs(gO-gN)+Math.abs(bO-bN);
+      if (dd > threshold) {
+        var lO=.299*rO+.587*gO+.114*bO, lN=.299*rN+.587*gN+.114*bN;
+        if (lO < lN) { out.data[i]=255; out.data[i+1]=80;  out.data[i+2]=80;  out.data[i+3]=220; }
+        else         { out.data[i]=60;  out.data[i+1]=200; out.data[i+2]=90;  out.data[i+3]=220; }
+      } else {
+        var g = Math.round(.299*rN+.587*gN+.114*bN);
+        var m = Math.round(g*.3+200*.7);
+        out.data[i]=m; out.data[i+1]=m; out.data[i+2]=m; out.data[i+3]=255;
+      }
+    }
+  }
+}
+
+/* ─────────────────────────── ZOOM ─────────────────────────── */
+function updateZoomDisplay() {
+  var el = document.getElementById('zoomDisplay');
+  if (!el) return;
+  if (zoomMode === 'fit')   { el.textContent = 'Fit'; return; }
+  if (zoomMode === 'width') { el.textContent = 'W'; return; }
+  // numeric: renderScale already includes DPR, so divide back out for display
+  var pct = Math.round((renderScale / DPR) * 100);
+  el.textContent = pct + '%';
+}
+
+function setZoom(mode) {
+  zoomMode = mode;
+  if (imgOld || imgNew) scheduleRender();
+}
+
+function zoomBy(delta) {
+  // Convert current mode to a numeric factor first
+  if (zoomMode === 'fit' || zoomMode === 'width') {
+    // renderScale already set from last render; strip DPR to get user-visible factor
+    zoomMode = renderScale / DPR;
+  }
+  zoomMode = Math.max(0.1, Math.min(8, zoomMode + delta));
+  if (imgOld || imgNew) scheduleRender();
+}
+
+/* Debounced render — prevents rapid zoom/slider from queuing many renders */
+var scheduleTimer = null;
+function scheduleRender(immediate) {
+  clearTimeout(scheduleTimer);
+  if (immediate) {
+    renderAndDraw();
+  } else {
+    scheduleTimer = setTimeout(renderAndDraw, 80);
+  }
+}
+
+/* ─────────────────────────── MODE / SLIDERS ─────────────────────────── */
+function setMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  document.getElementById('opacityGroup').style.display   = mode === 'overlay' ? '' : 'none';
+  document.getElementById('thresholdGroup').style.display = mode === 'diff'    ? '' : 'none';
+  if (imgOld || imgNew) drawComposite();
+}
+
+function updateOpacity(v) {
+  opacity = v / 100;
+  document.getElementById('opacityVal').textContent = v + '%';
+  if (currentMode === 'overlay') repaintOnly();
+}
+
+function updateThreshold(v) {
+  threshold = parseInt(v);
+  document.getElementById('thresholdVal').textContent = v;
+  if (currentMode === 'diff') repaintOnly();
+}
+
+/* ─────────────────────────── PAGING ─────────────────────────── */
+function changePage(dir) {
+  var next = currentPage + dir;
+  if (next < 1 || next > maxPages) return;
+  currentPage = next;
+  updatePageInfo();
+  setStatus('processing', 'Loading page ' + currentPage + '…');
+  setProgress(0.2);
+  renderAndDraw().then(function () {
+    setStatus('ready', 'Page ' + currentPage + ' of ' + maxPages);
+  });
+}
+function updatePageInfo() {
+  document.getElementById('pageInfo').textContent = currentPage + '/' + maxPages;
+}
+
+/* ─────────────────────────── TOGGLE / RESET ─────────────────────────── */
+function toggleUpload() {
+  var sec = document.getElementById('uploadSection');
+  sec.classList.toggle('collapsed');
+  document.getElementById('toggleUploadBtn').textContent =
+    sec.classList.contains('collapsed') ? 'Show Files' : 'Hide Files';
+  if (imgOld || imgNew) setTimeout(scheduleRender, 60);
+}
+
+function resetAll() {
+  pdfOld = pdfNew = imgOld = imgNew = null;
+  currentPage = 1; maxPages = 1; zoomMode = 'fit'; renderScale = 1;
+  ['dropOld','dropNew'].forEach(function(id){
+    document.getElementById(id).classList.remove('loaded');
+  });
+  ['nameOld','nameNew','pagesOld','pagesNew'].forEach(function(id){
+    document.getElementById(id).textContent='';
+  });
+  document.getElementById('fileOld').value='';
+  document.getElementById('fileNew').value='';
+  document.getElementById('compareBtn').disabled=true;
+  document.getElementById('compareBtn').innerHTML='&#9654; Compare';
+  document.getElementById('toolbar').classList.remove('visible');
+  document.getElementById('legend').classList.remove('visible');
+  document.getElementById('exportPageBtn').style.display='none';
+  document.getElementById('exportAllBtn').style.display='none';
+  document.getElementById('toggleUploadBtn').style.display='none';
+  document.getElementById('uploadSection').classList.remove('collapsed');
+  var area = document.getElementById('viewArea');
+  area.innerHTML='';
+  area.insertAdjacentHTML('beforeend',
+    '<div class="welcome" id="welcome">' +
+    '<div class="welcome-icon">&#916;</div>' +
+    '<h2>Compare two PDF revisions visually</h2>' +
+    '<div class="welcome-steps">' +
+    '<div class="welcome-step"><span class="step-num">1</span>Upload Old PDF</div>' +
+    '<div class="welcome-step"><span class="step-num">2</span>Upload New PDF</div>' +
+    '<div class="welcome-step"><span class="step-num">3</span>Click Compare</div>' +
+    '</div></div>');
+  updateZoomDisplay();
+  setStatus('waiting','Waiting for PDF files…');
+}
+
+function setStatus(type,msg){
+  document.getElementById('statusDot').className='status-dot '+type;
+  document.getElementById('statusText').textContent=msg;
+}
+
+/* ─────────────────────────── KEYBOARD SHORTCUTS ─────────────────────────── */
+document.addEventListener('keydown', function(e){
+  if(e.target.tagName==='INPUT') return;
+  if(e.key==='ArrowLeft'||e.key==='ArrowUp')  changePage(-1);
+  if(e.key==='ArrowRight'||e.key==='ArrowDown') changePage(1);
+  if(e.key==='+'||e.key==='=') zoomBy(0.2);
+  if(e.key==='-') zoomBy(-0.2);
+  if(e.key==='f'||e.key==='F') setZoom('fit');
+  if(e.key==='w'||e.key==='W') setZoom('width');
+  if(e.key==='1') setMode('overlay');
+  if(e.key==='2') setMode('diff');
+  if(e.key==='3') setMode('swipe');
+});
+
+/* Rerender on window resize so fit/width zoom recalculates */
+window.addEventListener('resize', function(){
+  if(imgOld||imgNew) scheduleRender();
+});
+
+/* ─────────────────────────── EXPORT PDF ─────────────────────────── */
+async function exportPDF(scope) {
+  var jsPDF = window.jspdf.jsPDF;
+  setStatus('processing','Preparing export…');
+  setProgress(0.05);
+  var pages = scope==='all'
+    ? Array.from({length:maxPages},function(_,i){return i+1;})
+    : [currentPage];
+  var doc = null;
+
+  // Export always at 2× DPR for a crisp result regardless of current zoom
+  var EXPORT_SCALE = 2;
+
+  for(var idx=0;idx<pages.length;idx++){
+    var pn=pages[idx];
+    setProgress((idx+0.5)/pages.length*0.9);
+    setStatus('processing','Diff page '+pn+'/'+maxPages+'…');
+
+    var r=await Promise.all([
+      renderPage(pdfOld,pn,EXPORT_SCALE),
+      renderPage(pdfNew,pn,EXPORT_SCALE)
+    ]);
+    var diffC=makeDiffCanvas(r[0],r[1]);
+    var cw=diffC.width, ch=diffC.height;
+    var orient=cw>ch?'landscape':'portrait';
+    if(idx===0) doc=new jsPDF({orientation:orient,unit:'px',format:[cw,ch],compress:true});
+    else doc.addPage([cw,ch],orient);
+
+    doc.addImage(diffC.toDataURL('image/jpeg',0.92),'JPEG',0,0,cw,ch);
+
+    // Header bar
+    doc.setFillColor(30,30,40); doc.rect(0,0,cw,50,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(240,204,136);
+    doc.text('PDF COMPARE \u2014 PIXEL DIFF',20,32);
+    doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(180,180,190);
+    var oN=document.getElementById('nameOld').textContent||'Old';
+    var nN=document.getElementById('nameNew').textContent||'New';
+    doc.text('Page '+pn+'/'+maxPages+'  |  Old: '+oN+'  |  New: '+nN+'  |  Threshold: '+threshold,20,47);
+
+    // Footer bar
+    var ly=ch-32;
+    doc.setFillColor(30,30,40); doc.rect(0,ly-4,cw,36,'F');
+    doc.setFontSize(10);
+    doc.setFillColor(255,80,80);  doc.rect(20,ly+2,10,10,'F');
+    doc.setTextColor(200,200,210); doc.text('Removed',36,ly+10);
+    doc.setFillColor(60,200,90);  doc.rect(120,ly+2,10,10,'F');
+    doc.text('Added',136,ly+10);
+    doc.setFillColor(140,140,140); doc.rect(210,ly+2,10,10,'F');
+    doc.text('Unchanged',226,ly+10);
+    doc.setFontSize(9); doc.setTextColor(240,204,136);
+    doc.text('Copyright (c) Dang Quoc Truong (DQT)',cw-320,ly+10);
+    doc.setTextColor(120,120,130);
+    doc.text(new Date().toLocaleString(),cw-130,ly+10);
+  }
+  doc.save('PDF_Compare_'+new Date().toISOString().slice(0,10)+'.pdf');
+  setProgress(1);
+  setStatus('ready','Exported '+pages.length+' page(s)');
+}
+
+function makeDiffCanvas(cOld,cNew){
+  var w=Math.max(cOld?cOld.width:0,cNew?cNew.width:0);
+  var h=Math.max(cOld?cOld.height:0,cNew?cNew.height:0);
+  var off=document.createElement('canvas');
+  off.width=w; off.height=h;
+  var ctx=off.getContext('2d');
+  if(!cOld||!cNew){
+    ctx.fillStyle='#FFF'; ctx.fillRect(0,0,w,h);
+    if(cOld) ctx.drawImage(cOld,0,0);
+    if(cNew) ctx.drawImage(cNew,0,0);
+    return off;
+  }
+  var dO=cOld.getContext('2d').getImageData(0,0,cOld.width,cOld.height);
+  var dN=cNew.getContext('2d').getImageData(0,0,cNew.width,cNew.height);
+  var out=ctx.createImageData(w,h);
+  pixelDiff(dO,dN,out,w,h,cOld.width,cOld.height,cNew.width,cNew.height);
+  ctx.putImageData(out,0,0);
+  return off;
+}
+</script>
+</body>
+</html>
