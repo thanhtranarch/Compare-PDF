@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Compare — DQT</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0F1117;
+    --surface: #1A1D27;
+    --surface2: #242836;
+    --border: #2E3345;
+    --text: #E8E9ED;
+    --text2: #8B8FA3;
+    --accent: #F0CC88;
+    --accent2: #C89650;
+    --red: #FF6B6B;
+    --green: #51CF66;
+    --radius: 8px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; }
+  body {
+    font-family:'DM Sans',sans-serif;
+    background:var(--bg); color:var(--text);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+
+  /* Header */
+  .header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 16px; background:var(--surface);
+    border-bottom:1px solid var(--border); flex-shrink:0; z-index:100;
+  }
+  .logo { display:flex; align-items:center; gap:8px; }
+  .logo-icon {
+    width:30px; height:30px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    border-radius:6px; display:flex; align-items:center; justify-content:center;
+    font-size:15px; font-weight:700; color:var(--bg);
+  }
+  .logo h1 { font-size:15px; font-weight:700; }
+  .logo h1 span { color:var(--accent); }
+  .header-actions { display:flex; align-items:center; gap:6px; }
+
+  .btn {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:6px 12px; border-radius:6px;
+    border:1px solid var(--border); background:var(--surface2);
+    color:var(--text); font-family:inherit; font-size:11px; font-weight:500;
+    cursor:pointer; transition:all .15s; white-space:nowrap;
+  }
+  .btn:hover { border-color:var(--accent); color:var(--accent); }
+  .btn-primary {
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:var(--bg); border:none; font-weight:600;
+  }
+  .btn-primary:hover { opacity:.9; color:var(--bg); }
+  .btn-primary:disabled { opacity:.4; cursor:not-allowed; }
+  .btn-sm { padding:3px 8px; font-size:10px; }
+
+  /* Upload */
+  .upload-section {
+    display:flex; gap:12px; padding:14px 16px; flex-shrink:0;
+  }
+  .upload-section.collapsed { display:none; }
+  .upload-card {
+    flex:1; background:var(--surface); border:2px dashed var(--border);
+    border-radius:var(--radius); padding:28px 16px; text-align:center;
+    cursor:pointer; transition:all .2s;
+  }
+  .upload-card:hover { border-color:var(--accent); background:var(--surface2); }
+  .upload-card.loaded { border-style:solid; border-color:var(--green); }
+  .upload-card .label {
+    font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:500;
+    color:var(--accent); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;
+  }
+  .upload-card .title { font-size:14px; font-weight:600; margin-bottom:3px; }
+  .upload-card .subtitle { font-size:11px; color:var(--text2); }
+  .upload-card .filename {
+    font-family:'JetBrains Mono',monospace; font-size:10px;
+    color:var(--green); margin-top:6px; word-break:break-all;
+  }
+  .upload-card input { display:none; }
+
+  /* Toolbar */
+  .toolbar {
+    display:none; align-items:center; gap:8px;
+    padding:6px 16px; flex-shrink:0; flex-wrap:wrap;
+  }
+  .toolbar.visible { display:flex; }
+  .mode-group {
+    display:flex; background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; overflow:hidden;
+  }
+  .mode-btn {
+    padding:5px 11px; font-family:inherit; font-size:11px; font-weight:500;
+    border:none; background:transparent; color:var(--text2); cursor:pointer;
+  }
+  .mode-btn:hover { color:var(--text); }
+  .mode-btn.active { background:var(--accent); color:var(--bg); font-weight:600; }
+  .separator { width:1px; height:24px; background:var(--border); margin:0 4px; }
+  .slider-group { display:flex; align-items:center; gap:5px; }
+  .slider-group label { font-size:11px; color:var(--text2); font-weight:500; }
+  .slider-group input[type="range"] {
+    -webkit-appearance:none; width:80px; height:4px;
+    background:var(--border); border-radius:2px; outline:none;
+  }
+  .slider-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:12px; height:12px; border-radius:50%;
+    background:var(--accent); cursor:pointer;
+  }
+  .tool-right { display:flex; align-items:center; gap:6px; margin-left:auto; }
+  .page-info {
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text2);
+  }
+
+  /* Legend */
+  .legend { display:none; align-items:center; gap:14px; padding:2px 16px 4px; flex-shrink:0; }
+  .legend.visible { display:flex; }
+  .legend-item { display:flex; align-items:center; gap:4px; font-size:10px; color:var(--text2); }
+  .legend-dot { width:10px; height:10px; border-radius:2px; }
+
+  /* Main view area - takes all remaining space */
+  .view-area {
+    flex:1; overflow:auto; position:relative;
+    background:var(--surface); margin:0 8px 4px; border-radius:var(--radius);
+    border:1px solid var(--border);
+  }
+  .view-area canvas { display:block; }
+
+  /* Swipe elements */
+  .swipe-wrap { position:relative; display:inline-block; }
+  .swipe-old-clip {
+    position:absolute; top:0; left:0; bottom:0;
+    overflow:hidden; pointer-events:none;
+  }
+  .swipe-old-clip canvas { display:block; }
+  .swipe-handle {
+    position:absolute; top:0; bottom:0; width:3px;
+    background:var(--accent); cursor:ew-resize; z-index:20;
+  }
+  .swipe-handle::before {
+    content:''; position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    width:28px; height:28px; border-radius:50%;
+    background:var(--accent); border:3px solid var(--bg);
+    box-shadow:0 2px 8px rgba(0,0,0,.5);
+  }
+  .swipe-handle::after {
+    content:'< >'; position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    font-size:8px; font-weight:700; color:var(--bg);
+    font-family:'JetBrains Mono',monospace; letter-spacing:-1px;
+  }
+  .swipe-label {
+    position:absolute; top:6px; z-index:15;
+    font-family:'JetBrains Mono',monospace;
+    font-size:9px; font-weight:600; letter-spacing:.5px;
+    padding:3px 8px; border-radius:3px;
+    background:rgba(15,17,23,.8); color:var(--accent);
+  }
+  .swipe-label-old { left:8px; }
+  .swipe-label-new { right:8px; }
+
+  /* Footer */
+  .footer {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:4px 16px; flex-shrink:0;
+    font-size:9px; color:var(--text2);
+    font-family:'JetBrains Mono',monospace;
+    background:var(--surface); border-top:1px solid var(--border);
+  }
+  .status-dot { display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:4px; }
+  .status-dot.ready { background:var(--green); }
+  .status-dot.waiting { background:var(--text2); }
+
+  @media(max-width:768px){
+    .upload-section{flex-direction:column;padding:10px;}
+    .header{padding:8px 10px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon">&#916;</div>
+    <h1>PDF <span>Compare</span></h1>
+  </div>
+  <div class="header-actions">
+    <button class="btn" id="toggleUploadBtn" style="display:none" onclick="toggleUpload()">Show Files</button>
+    <button class="btn" onclick="resetAll()">&#8635; Reset</button>
+    <button class="btn" id="exportPageBtn" style="display:none" onclick="exportPDF('current')">Export Page</button>
+    <button class="btn" id="exportAllBtn" style="display:none" onclick="exportPDF('all')">Export All</button>
+    <button class="btn btn-primary" id="compareBtn" disabled onclick="runCompare()">Compare</button>
+  </div>
+</div>
+
+<div class="upload-section" id="uploadSection">
+  <div class="upload-card" id="dropOld" onclick="document.getElementById('fileOld').click()">
+    <div class="label">OLD REVISION</div>
+    <div class="title">Drop PDF here</div>
+    <div class="subtitle">or click to browse</div>
+    <div class="filename" id="nameOld"></div>
+    <input type="file" id="fileOld" accept=".pdf" onchange="handleFile(this,'old')">
+  </div>
+  <div class="upload-card" id="dropNew" onclick="document.getElementById('fileNew').click()">
+    <div class="label">NEW REVISION</div>
+    <div class="title">Drop PDF here</div>
+    <div class="subtitle">or click to browse</div>
+    <div class="filename" id="nameNew"></div>
+    <input type="file" id="fileNew" accept=".pdf" onchange="handleFile(this,'new')">
+  </div>
+</div>
+
+<div class="toolbar" id="toolbar">
+  <div class="mode-group">
+    <button class="mode-btn active" data-mode="overlay" onclick="setMode('overlay')">Overlay</button>
+    <button class="mode-btn" data-mode="diff" onclick="setMode('diff')">Pixel Diff</button>
+    <button class="mode-btn" data-mode="swipe" onclick="setMode('swipe')">Swipe</button>
+  </div>
+  <div class="separator"></div>
+  <div class="slider-group" id="opacityGroup">
+    <label>Opacity</label>
+    <input type="range" min="0" max="100" value="50" id="opacitySlider" oninput="updateOpacity(this.value)">
+  </div>
+  <div class="slider-group" id="thresholdGroup" style="display:none">
+    <label>Threshold</label>
+    <input type="range" min="5" max="80" value="30" id="thresholdSlider" oninput="updateThreshold(this.value)">
+  </div>
+  <div class="tool-right">
+    <button class="btn btn-sm" onclick="changePage(-1)">Prev</button>
+    <span class="page-info" id="pageInfo">1/1</span>
+    <button class="btn btn-sm" onclick="changePage(1)">Next</button>
+    <div class="separator"></div>
+    <button class="btn btn-sm" onclick="setZoom('fit')">Fit</button>
+    <button class="btn btn-sm" onclick="setZoom('width')">W</button>
+    <button class="btn btn-sm" onclick="zoomBy(-0.15)">-</button>
+    <button class="btn btn-sm" onclick="zoomBy(0.15)">+</button>
+  </div>
+</div>
+
+<div class="legend" id="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Removed</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Added</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#666"></div>Unchanged</div>
+</div>
+
+<div class="view-area" id="viewArea"></div>
+
+<div class="footer">
+  <div><span class="status-dot waiting" id="statusDot"></span><span id="statusText">Waiting for PDF files...</span></div>
+  <div>Copyright &copy; Dang Quoc Truong (DQT)</div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+var pdfOld=null, pdfNew=null;
+var imgOld=null, imgNew=null;
+var currentMode='overlay';
+var currentPage=1, maxPages=1;
+var opacity=0.5, threshold=30;
+var zoomMode='fit'; // 'fit', 'width', or a number
+var RENDER_SCALE=2;
+
+// Drag & Drop
+['dropOld','dropNew'].forEach(function(id){
+  var el=document.getElementById(id);
+  el.addEventListener('dragover',function(e){e.preventDefault();el.style.borderColor='var(--accent)';});
+  el.addEventListener('dragleave',function(){el.style.borderColor='';});
+  el.addEventListener('drop',function(e){
+    e.preventDefault();el.style.borderColor='';
+    var f=e.dataTransfer.files[0];
+    if(f&&f.type==='application/pdf') loadPDF(f,id==='dropOld'?'old':'new');
+  });
+});
+
+function handleFile(inp,which){if(inp.files[0])loadPDF(inp.files[0],which);}
+
+async function loadPDF(file,which){
+  var buf=await file.arrayBuffer();
+  var pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  if(which==='old'){
+    pdfOld=pdf;
+    document.getElementById('dropOld').classList.add('loaded');
+    document.getElementById('nameOld').textContent=file.name;
+  }else{
+    pdfNew=pdf;
+    document.getElementById('dropNew').classList.add('loaded');
+    document.getElementById('nameNew').textContent=file.name;
+  }
+  if(pdfOld&&pdfNew){
+    document.getElementById('compareBtn').disabled=false;
+    setStatus('ready','Ready to compare');
+  }else{
+    setStatus('waiting',(which==='old'?'Old':'New')+' loaded...');
+  }
+}
+
+async function renderPage(pdf,num,scale){
+  var page=await pdf.getPage(num);
+  var vp=page.getViewport({scale:scale});
+  var c=document.createElement('canvas');
+  c.width=vp.width; c.height=vp.height;
+  var ctx=c.getContext('2d');
+  ctx.fillStyle='#FFF'; ctx.fillRect(0,0,c.width,c.height);
+  await page.render({canvasContext:ctx,viewport:vp}).promise;
+  return c;
+}
+
+async function runCompare(){
+  var btn=document.getElementById('compareBtn');
+  btn.disabled=true; btn.textContent='Processing...';
+  setStatus('waiting','Rendering...');
+  maxPages=Math.max(pdfOld.numPages,pdfNew.numPages);
+  currentPage=1;
+  await renderCurrentPage();
+  btn.disabled=false; btn.textContent='Compare';
+  document.getElementById('toolbar').classList.add('visible');
+  document.getElementById('exportPageBtn').style.display='';
+  document.getElementById('exportAllBtn').style.display='';
+  document.getElementById('toggleUploadBtn').style.display='';
+  document.getElementById('uploadSection').classList.add('collapsed');
+  updatePageInfo();
+  setStatus('ready','Done');
+}
+
+async function renderCurrentPage(){
+  var cO=currentPage<=pdfOld.numPages?await renderPage(pdfOld,currentPage,RENDER_SCALE):null;
+  var cN=currentPage<=pdfNew.numPages?await renderPage(pdfNew,currentPage,RENDER_SCALE):null;
+  imgOld=cO; imgNew=cN;
+  draw();
+}
+
+// ── Calculate display size ──
+function calcDisplaySize(){
+  var area=document.getElementById('viewArea');
+  var areaW=area.clientWidth;
+  var areaH=area.clientHeight;
+  var srcW=Math.max(imgOld?imgOld.width:0, imgNew?imgNew.width:0);
+  var srcH=Math.max(imgOld?imgOld.height:0, imgNew?imgNew.height:0);
+  if(srcW===0||srcH===0) return {w:areaW,h:areaH,scale:1};
+
+  var baseW=srcW/RENDER_SCALE;
+  var baseH=srcH/RENDER_SCALE;
+
+  if(zoomMode==='fit'){
+    var s=Math.min(areaW/baseW, areaH/baseH);
+    return {w:Math.round(baseW*s), h:Math.round(baseH*s), scale:s};
+  }else if(zoomMode==='width'){
+    var s=areaW/baseW;
+    return {w:Math.round(baseW*s), h:Math.round(baseH*s), scale:s};
+  }else{
+    // numeric zoom
+    var s=zoomMode;
+    return {w:Math.round(baseW*s), h:Math.round(baseH*s), scale:s};
+  }
+}
+
+// ── Main draw ──
+var activeCanvas=null;
+
+function draw(preserveScroll){
+  var area=document.getElementById('viewArea');
+  var scrollL=area.scrollLeft, scrollT=area.scrollTop;
+
+  // In-place repaint for slider changes (no DOM rebuild needed)
+  if(preserveScroll && activeCanvas){
+    if(currentMode==='overlay'){
+      repaintOverlay();
+      return;
+    }
+    if(currentMode==='diff'){
+      repaintDiff();
+      return;
+    }
+  }
+
+  area.innerHTML='';
+  activeCanvas=null;
+  document.getElementById('legend').classList.remove('visible');
+  if(currentMode==='overlay') drawOverlay(area);
+  else if(currentMode==='diff') drawDiff(area);
+  else if(currentMode==='swipe') drawSwipe(area);
+
+  // Restore scroll after DOM rebuild
+  if(preserveScroll){
+    requestAnimationFrame(function(){
+      area.scrollLeft=scrollL;
+      area.scrollTop=scrollT;
+    });
+  }
+}
+
+function repaintOverlay(){
+  if(!activeCanvas) return;
+  var w=activeCanvas.width, h=activeCanvas.height;
+  var ctx=activeCanvas.getContext('2d');
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='#FFF'; ctx.fillRect(0,0,w,h);
+  if(imgOld){ctx.globalAlpha=1-opacity; ctx.drawImage(imgOld,0,0);}
+  if(imgNew){ctx.globalAlpha=opacity; ctx.drawImage(imgNew,0,0);}
+  ctx.globalAlpha=1;
+}
+
+function repaintDiff(){
+  if(!activeCanvas||!imgOld||!imgNew) return;
+  var w=activeCanvas.width, h=activeCanvas.height;
+  var dO=imgOld.getContext('2d').getImageData(0,0,imgOld.width,imgOld.height);
+  var dN=imgNew.getContext('2d').getImageData(0,0,imgNew.width,imgNew.height);
+  var ctx=activeCanvas.getContext('2d');
+  var out=ctx.createImageData(w,h);
+  for(var y=0;y<h;y++){
+    for(var x=0;x<w;x++){
+      var i=(y*w+x)*4;
+      var rO=255,gO=255,bO=255,rN=255,gN=255,bN=255;
+      if(x<imgOld.width&&y<imgOld.height){var j=(y*imgOld.width+x)*4;rO=dO.data[j];gO=dO.data[j+1];bO=dO.data[j+2];}
+      if(x<imgNew.width&&y<imgNew.height){var k=(y*imgNew.width+x)*4;rN=dN.data[k];gN=dN.data[k+1];bN=dN.data[k+2];}
+      var dd=Math.abs(rO-rN)+Math.abs(gO-gN)+Math.abs(bO-bN);
+      if(dd>threshold){
+        var lO=.299*rO+.587*gO+.114*bO,lN=.299*rN+.587*gN+.114*bN;
+        if(lO<lN){out.data[i]=255;out.data[i+1]=80;out.data[i+2]=80;out.data[i+3]=220;}
+        else{out.data[i]=60;out.data[i+1]=200;out.data[i+2]=90;out.data[i+3]=220;}
+      }else{
+        var g=Math.round(.299*rN+.587*gN+.114*bN);var m=Math.round(g*.3+200*.7);
+        out.data[i]=m;out.data[i+1]=m;out.data[i+2]=m;out.data[i+3]=255;
+      }
+    }
+  }
+  ctx.putImageData(out,0,0);
+}
+
+function drawOverlay(area){
+  var sz=calcDisplaySize();
+  var srcW=Math.max(imgOld?imgOld.width:0, imgNew?imgNew.width:0);
+  var srcH=Math.max(imgOld?imgOld.height:0, imgNew?imgNew.height:0);
+  var c=document.createElement('canvas');
+  c.width=srcW; c.height=srcH;
+  c.style.width=sz.w+'px'; c.style.height=sz.h+'px';
+  var ctx=c.getContext('2d');
+  ctx.fillStyle='#FFF'; ctx.fillRect(0,0,srcW,srcH);
+  if(imgOld){ctx.globalAlpha=1-opacity; ctx.drawImage(imgOld,0,0);}
+  if(imgNew){ctx.globalAlpha=opacity; ctx.drawImage(imgNew,0,0);}
+  ctx.globalAlpha=1;
+  area.appendChild(c);
+  activeCanvas=c;
+}
+
+function drawDiff(area){
+  document.getElementById('legend').classList.add('visible');
+  if(!imgOld||!imgNew) return;
+  var sz=calcDisplaySize();
+  var w=Math.max(imgOld.width,imgNew.width);
+  var h=Math.max(imgOld.height,imgNew.height);
+  var dO=imgOld.getContext('2d').getImageData(0,0,imgOld.width,imgOld.height);
+  var dN=imgNew.getContext('2d').getImageData(0,0,imgNew.width,imgNew.height);
+  var c=document.createElement('canvas');
+  c.width=w; c.height=h;
+  c.style.width=sz.w+'px'; c.style.height=sz.h+'px';
+  var ctx=c.getContext('2d');
+  var out=ctx.createImageData(w,h);
+  for(var y=0;y<h;y++){
+    for(var x=0;x<w;x++){
+      var i=(y*w+x)*4;
+      var rO=255,gO=255,bO=255,rN=255,gN=255,bN=255;
+      if(x<imgOld.width&&y<imgOld.height){var j=(y*imgOld.width+x)*4;rO=dO.data[j];gO=dO.data[j+1];bO=dO.data[j+2];}
+      if(x<imgNew.width&&y<imgNew.height){var k=(y*imgNew.width+x)*4;rN=dN.data[k];gN=dN.data[k+1];bN=dN.data[k+2];}
+      var dd=Math.abs(rO-rN)+Math.abs(gO-gN)+Math.abs(bO-bN);
+      if(dd>threshold){
+        var lO=.299*rO+.587*gO+.114*bO, lN=.299*rN+.587*gN+.114*bN;
+        if(lO<lN){out.data[i]=255;out.data[i+1]=80;out.data[i+2]=80;out.data[i+3]=220;}
+        else{out.data[i]=60;out.data[i+1]=200;out.data[i+2]=90;out.data[i+3]=220;}
+      }else{
+        var g=Math.round(.299*rN+.587*gN+.114*bN);
+        var m=Math.round(g*.3+200*.7);
+        out.data[i]=m;out.data[i+1]=m;out.data[i+2]=m;out.data[i+3]=255;
+      }
+    }
+  }
+  ctx.putImageData(out,0,0);
+  area.appendChild(c);
+  activeCanvas=c;
+}
+
+function drawSwipe(area){
+  var sz=calcDisplaySize();
+  var srcW=Math.max(imgOld?imgOld.width:0, imgNew?imgNew.width:0);
+  var srcH=Math.max(imgOld?imgOld.height:0, imgNew?imgNew.height:0);
+  var dW=sz.w, dH=sz.h;
+
+  // Container
+  var wrap=document.createElement('div');
+  wrap.className='swipe-wrap';
+  wrap.style.width=dW+'px'; wrap.style.height=dH+'px';
+
+  // New canvas (background)
+  var cN=document.createElement('canvas');
+  cN.width=srcW; cN.height=srcH;
+  cN.style.width=dW+'px'; cN.style.height=dH+'px';
+  if(imgNew) cN.getContext('2d').drawImage(imgNew,0,0);
+  else{ var tx=cN.getContext('2d'); tx.fillStyle='#FFF'; tx.fillRect(0,0,srcW,srcH); }
+  wrap.appendChild(cN);
+
+  // Old clip
+  var clip=document.createElement('div');
+  clip.className='swipe-old-clip';
+  clip.style.width=(dW/2)+'px';
+  var cO=document.createElement('canvas');
+  cO.width=srcW; cO.height=srcH;
+  cO.style.width=dW+'px'; cO.style.height=dH+'px';
+  if(imgOld) cO.getContext('2d').drawImage(imgOld,0,0);
+  else{ var tx2=cO.getContext('2d'); tx2.fillStyle='#FFF'; tx2.fillRect(0,0,srcW,srcH); }
+  clip.appendChild(cO);
+  wrap.appendChild(clip);
+
+  // Handle
+  var handle=document.createElement('div');
+  handle.className='swipe-handle';
+  handle.style.left=(dW/2)+'px';
+  wrap.appendChild(handle);
+
+  // Labels
+  var lOld=document.createElement('div');
+  lOld.className='swipe-label swipe-label-old'; lOld.textContent='OLD';
+  wrap.appendChild(lOld);
+  var lNew=document.createElement('div');
+  lNew.className='swipe-label swipe-label-new'; lNew.textContent='NEW';
+  wrap.appendChild(lNew);
+
+  area.appendChild(wrap);
+
+  // Drag
+  var dragging=false;
+  function onMove(e){
+    if(!dragging) return;
+    var rect=wrap.getBoundingClientRect();
+    var x=(e.clientX!==undefined?e.clientX:e.touches[0].clientX)-rect.left;
+    x=Math.max(0,Math.min(dW,x));
+    clip.style.width=x+'px';
+    handle.style.left=x+'px';
+  }
+  wrap.addEventListener('mousedown',function(e){dragging=true;onMove(e);});
+  wrap.addEventListener('touchstart',function(e){dragging=true;onMove(e);},{passive:true});
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('touchmove',onMove,{passive:true});
+  document.addEventListener('mouseup',function(){dragging=false;});
+  document.addEventListener('touchend',function(){dragging=false;});
+}
+
+// ── Mode / Controls ──
+function setMode(mode){
+  currentMode=mode;
+  document.querySelectorAll('.mode-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mode===mode);});
+  document.getElementById('opacityGroup').style.display=mode==='overlay'?'':'none';
+  document.getElementById('thresholdGroup').style.display=mode==='diff'?'':'none';
+  if(imgOld||imgNew) draw();
+}
+
+function updateOpacity(v){opacity=v/100; if(currentMode==='overlay') draw(true);}
+function updateThreshold(v){threshold=parseInt(v); if(currentMode==='diff') draw(true);}
+
+function setZoom(mode){
+  zoomMode=mode;
+  if(imgOld||imgNew) draw(true);
+}
+function zoomBy(delta){
+  if(typeof zoomMode!=='number'){
+    var sz=calcDisplaySize();
+    zoomMode=sz.scale;
+  }
+  zoomMode=Math.max(0.3, Math.min(5, zoomMode+delta));
+  if(imgOld||imgNew) draw(true);
+}
+
+function changePage(dir){
+  var next=currentPage+dir;
+  if(next<1||next>maxPages) return;
+  currentPage=next; updatePageInfo();
+  setStatus('waiting','Page '+currentPage+'...');
+  renderCurrentPage().then(function(){setStatus('ready','Done');});
+}
+function updatePageInfo(){
+  document.getElementById('pageInfo').textContent=currentPage+'/'+maxPages;
+}
+
+function toggleUpload(){
+  var sec=document.getElementById('uploadSection');
+  sec.classList.toggle('collapsed');
+  document.getElementById('toggleUploadBtn').textContent=
+    sec.classList.contains('collapsed')?'Show Files':'Hide Files';
+  // Redraw since view area size changed
+  if(imgOld||imgNew) setTimeout(function(){draw(true);}, 50);
+}
+
+function resetAll(){
+  pdfOld=pdfNew=imgOld=imgNew=null;
+  currentPage=1; maxPages=1; zoomMode='fit';
+  document.getElementById('dropOld').classList.remove('loaded');
+  document.getElementById('dropNew').classList.remove('loaded');
+  document.getElementById('nameOld').textContent='';
+  document.getElementById('nameNew').textContent='';
+  document.getElementById('compareBtn').disabled=true;
+  document.getElementById('toolbar').classList.remove('visible');
+  document.getElementById('legend').classList.remove('visible');
+  document.getElementById('exportPageBtn').style.display='none';
+  document.getElementById('exportAllBtn').style.display='none';
+  document.getElementById('toggleUploadBtn').style.display='none';
+  document.getElementById('uploadSection').classList.remove('collapsed');
+  document.getElementById('viewArea').innerHTML='';
+  setStatus('waiting','Waiting for PDF files...');
+}
+
+function setStatus(type,msg){
+  document.getElementById('statusDot').className='status-dot '+type;
+  document.getElementById('statusText').textContent=msg;
+}
+
+// Redraw on window resize to maintain fit
+window.addEventListener('resize',function(){
+  if(imgOld||imgNew) draw(true);
+});
+
+// ── Export PDF ──
+async function exportPDF(scope){
+  var jsPDF=window.jspdf.jsPDF;
+  setStatus('waiting','Exporting...');
+  var pages=scope==='all'?Array.from({length:maxPages},function(_,i){return i+1;}): [currentPage];
+  var doc=null;
+  for(var idx=0;idx<pages.length;idx++){
+    var pn=pages[idx];
+    setStatus('waiting','Diff page '+pn+'/'+maxPages+'...');
+    var r=await Promise.all([
+      pn<=pdfOld.numPages?renderPage(pdfOld,pn,RENDER_SCALE):null,
+      pn<=pdfNew.numPages?renderPage(pdfNew,pn,RENDER_SCALE):null
+    ]);
+    var diffC=makeDiffCanvas(r[0],r[1]);
+    var cw=diffC.width, ch=diffC.height;
+    var orient=cw>ch?'landscape':'portrait';
+    if(idx===0) doc=new jsPDF({orientation:orient,unit:'px',format:[cw,ch],compress:true});
+    else doc.addPage([cw,ch],orient);
+    doc.addImage(diffC.toDataURL('image/jpeg',0.92),'JPEG',0,0,cw,ch);
+
+    // Header bar
+    doc.setFillColor(30,30,40); doc.rect(0,0,cw,50,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(240,204,136);
+    doc.text('PDF COMPARE - PIXEL DIFF',20,32);
+    doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(180,180,190);
+    var oN=document.getElementById('nameOld').textContent||'Old';
+    var nN=document.getElementById('nameNew').textContent||'New';
+    doc.text('Page '+pn+'/'+maxPages+'  |  Old: '+oN+'  |  New: '+nN+'  |  Threshold: '+threshold,20,47);
+
+    // Footer bar
+    var ly=ch-32;
+    doc.setFillColor(30,30,40); doc.rect(0,ly-4,cw,36,'F');
+    doc.setFontSize(10);
+    doc.setFillColor(255,80,80); doc.rect(20,ly+2,10,10,'F');
+    doc.setTextColor(200,200,210); doc.text('Removed',36,ly+10);
+    doc.setFillColor(60,200,90); doc.rect(120,ly+2,10,10,'F');
+    doc.text('Added',136,ly+10);
+    doc.setFillColor(140,140,140); doc.rect(210,ly+2,10,10,'F');
+    doc.text('Unchanged',226,ly+10);
+    // Copyright
+    doc.setFontSize(9); doc.setTextColor(240,204,136);
+    doc.text('Copyright (c) Dang Quoc Truong (DQT)',cw-320,ly+10);
+    doc.setTextColor(120,120,130);
+    doc.text(new Date().toLocaleString(),cw-130,ly+10);
+  }
+  doc.save('PDF_Compare_'+new Date().toISOString().slice(0,10)+'.pdf');
+  setStatus('ready','Exported '+pages.length+' page(s)');
+}
+
+function makeDiffCanvas(cOld,cNew){
+  var w=Math.max(cOld?cOld.width:0,cNew?cNew.width:0);
+  var h=Math.max(cOld?cOld.height:0,cNew?cNew.height:0);
+  var off=document.createElement('canvas');
+  off.width=w; off.height=h;
+  var ctx=off.getContext('2d');
+  if(!cOld||!cNew){
+    ctx.fillStyle='#FFF'; ctx.fillRect(0,0,w,h);
+    if(cOld) ctx.drawImage(cOld,0,0);
+    if(cNew) ctx.drawImage(cNew,0,0);
+    return off;
+  }
+  var dO=cOld.getContext('2d').getImageData(0,0,cOld.width,cOld.height);
+  var dN=cNew.getContext('2d').getImageData(0,0,cNew.width,cNew.height);
+  var out=ctx.createImageData(w,h);
+  for(var y=0;y<h;y++){
+    for(var x=0;x<w;x++){
+      var i=(y*w+x)*4;
+      var rO=255,gO=255,bO=255,rN=255,gN=255,bN=255;
+      if(x<cOld.width&&y<cOld.height){var j=(y*cOld.width+x)*4;rO=dO.data[j];gO=dO.data[j+1];bO=dO.data[j+2];}
+      if(x<cNew.width&&y<cNew.height){var k=(y*cNew.width+x)*4;rN=dN.data[k];gN=dN.data[k+1];bN=dN.data[k+2];}
+      var dd=Math.abs(rO-rN)+Math.abs(gO-gN)+Math.abs(bO-bN);
+      if(dd>threshold){
+        var lO=.299*rO+.587*gO+.114*bO,lN=.299*rN+.587*gN+.114*bN;
+        if(lO<lN){out.data[i]=255;out.data[i+1]=80;out.data[i+2]=80;out.data[i+3]=220;}
+        else{out.data[i]=60;out.data[i+1]=200;out.data[i+2]=90;out.data[i+3]=220;}
+      }else{
+        var g=Math.round(.299*rN+.587*gN+.114*bN);var m=Math.round(g*.3+200*.7);
+        out.data[i]=m;out.data[i+1]=m;out.data[i+2]=m;out.data[i+3]=255;
+      }
+    }
+  }
+  ctx.putImageData(out,0,0);
+  return off;
+}
+</script>
+</body>
+</html>
