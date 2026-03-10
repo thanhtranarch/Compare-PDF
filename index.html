@@ -429,6 +429,7 @@ var renderScale = 1;   // last actually-used render scale (set in calcRenderScal
 var DPR = Math.min(window.devicePixelRatio || 1, 2); // respect HiDPI, cap at 2×
 
 var renderVersion = 0; // increment to cancel stale renders
+var lastRenderedUserFactor = 1; // user-visible zoom factor after last successful render
 
 /*
  * WHEEL-ZOOM ANCHOR
@@ -616,6 +617,8 @@ async function renderAndDraw(opts) {
   imgOld = results[0];
   imgNew = results[1];
   setProgress(0.85);
+  // Record the user-visible factor so CSS preview can compute the correct ratio
+  lastRenderedUserFactor = typeof zoomMode === 'number' ? zoomMode : (renderScale / DPR);
   var anchor = pendingAnchor;
   pendingAnchor = null;
   drawComposite(anchor);
@@ -796,13 +799,30 @@ function pixelDiff(dO, dN, out, w, h, oW, oH, nW, nH) {
 }
 
 /* ─────────────────────────── ZOOM ─────────────────────────── */
+/*
+ * Instantly resize canvases via CSS while PDF.js re-renders in background.
+ * c.width (canvas px) never changes — only c.style.width (CSS px) is touched.
+ * drawComposite() clears the area with innerHTML='', so these overrides are
+ * automatically removed as soon as the real render lands.
+ */
+function applyCSSPreview() {
+  if (!imgOld && !imgNew) return;
+  if (typeof zoomMode !== 'number') return; // fit/width — no preview needed
+  var ratio = zoomMode / lastRenderedUserFactor;
+  if (Math.abs(ratio - 1) < 0.01) return;
+  document.querySelectorAll('#viewArea canvas').forEach(function(c) {
+    c.style.width  = Math.round(c.width  * ratio) + 'px';
+    c.style.height = Math.round(c.height * ratio) + 'px';
+  });
+}
+
 function updateZoomDisplay() {
   var el = document.getElementById('zoomDisplay');
   if (!el) return;
   if (zoomMode === 'fit')   { el.textContent = 'Fit'; return; }
   if (zoomMode === 'width') { el.textContent = 'W'; return; }
-  // numeric: renderScale already includes DPR, so divide back out for display
-  var pct = Math.round((renderScale / DPR) * 100);
+  // zoomMode is the user-visible factor (e.g. 1.5 = 150%); use it directly
+  var pct = Math.round(zoomMode * 100);
   el.textContent = pct + '%';
 }
 
@@ -814,10 +834,11 @@ function setZoom(mode) {
 function zoomBy(delta) {
   // Convert current mode to a numeric factor first
   if (zoomMode === 'fit' || zoomMode === 'width') {
-    // renderScale already set from last render; strip DPR to get user-visible factor
     zoomMode = renderScale / DPR;
   }
-  zoomMode = Math.max(0.1, Math.min(8, zoomMode + delta));
+  zoomMode = Math.max(0.1, Math.min(3, zoomMode + delta)); // max 300%
+  updateZoomDisplay(); // update % counter immediately, no need to wait for re-render
+  applyCSSPreview();   // stretch existing canvas instantly as visual feedback
   if (imgOld || imgNew) scheduleRender();
 }
 
