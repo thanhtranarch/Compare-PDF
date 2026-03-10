@@ -430,6 +430,13 @@ var DPR = Math.min(window.devicePixelRatio || 1, 2); // respect HiDPI, cap at 2�
 
 var renderVersion = 0; // increment to cancel stale renders
 
+/*
+ * WHEEL-ZOOM ANCHOR
+ * Captured once per render cycle: the content-fraction under the cursor.
+ * After render, scroll is adjusted so that same fraction stays under cursor.
+ */
+var pendingAnchor = null;
+
 /* ─────────────────────────── PROGRESS ─────────────────────────── */
 function setProgress(v) {
   var bar = document.getElementById('progressBar');
@@ -591,7 +598,9 @@ async function renderAndDraw(opts) {
   imgOld = results[0];
   imgNew = results[1];
   setProgress(0.85);
-  drawComposite();
+  var anchor = pendingAnchor;
+  pendingAnchor = null;
+  drawComposite(anchor);
   setProgress(1);
 }
 
@@ -607,9 +616,8 @@ function repaintOnly() {
 /* ─────────────────────────── COMPOSITE DRAW ─────────────────────────── */
 var activeCanvas = null;
 
-function drawComposite() {
+function drawComposite(anchor) {
   var area = document.getElementById('viewArea');
-  // Keep scroll
   var sl = area.scrollLeft, st = area.scrollTop;
   area.innerHTML = '';
   activeCanvas = null;
@@ -620,6 +628,15 @@ function drawComposite() {
   else if (currentMode === 'swipe') buildSwipe(area);
 
   requestAnimationFrame(function () {
+    if (anchor) {
+      // Zoom-to-point: keep the anchor fraction under the mouse cursor
+      var c = activeCanvas || area.querySelector('canvas');
+      if (c) {
+        area.scrollLeft = Math.max(0, anchor.fracX * c.width  - anchor.mouseX);
+        area.scrollTop  = Math.max(0, anchor.fracY * c.height - anchor.mouseY);
+        return;
+      }
+    }
     area.scrollLeft = sl;
     area.scrollTop = st;
   });
@@ -902,6 +919,39 @@ document.addEventListener('keydown', function(e){
 window.addEventListener('resize', function(){
   if(imgOld||imgNew) scheduleRender();
 });
+
+/* ─────────────────────────── WHEEL ZOOM (scroll → zoom at cursor) ─────────────────────────── */
+document.getElementById('viewArea').addEventListener('wheel', function(e) {
+  if (!imgOld && !imgNew) return;
+  e.preventDefault(); // prevent page scroll; we handle it ourselves
+
+  var area = this;
+  var rect = area.getBoundingClientRect();
+  var mouseX = e.clientX - rect.left;
+  var mouseY = e.clientY - rect.top;
+
+  // Capture anchor ONCE per render cycle (first wheel event wins).
+  // Uses the CURRENT canvas size — still accurate for the ongoing render.
+  if (!pendingAnchor) {
+    var c = activeCanvas || area.querySelector('canvas');
+    if (c) {
+      pendingAnchor = {
+        fracX : (mouseX + area.scrollLeft) / c.width,
+        fracY : (mouseY + area.scrollTop)  / c.height,
+        mouseX: mouseX,
+        mouseY: mouseY
+      };
+    }
+  }
+
+  // Normalize deltaY across browsers / input modes
+  var delta = e.deltaY;
+  if (e.deltaMode === 1) delta *= 33;   // line  → px equivalent
+  if (e.deltaMode === 2) delta *= 500;  // page  → px equivalent
+
+  // ~0.2 zoom change per 100px of scroll (1 typical wheel notch)
+  zoomBy(-delta * 0.002);
+}, { passive: false });
 
 /* ─────────────────────────── EXPORT PDF ─────────────────────────── */
 async function exportPDF(scope) {
