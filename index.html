@@ -460,10 +460,28 @@ function setProgress(v) {
 function handleFile(inp, which) { if (inp.files[0]) loadPDF(inp.files[0], which); }
 
 async function loadPDF(file, which) {
-  setStatus('processing', 'Loading ' + (which === 'old' ? 'old' : 'new') + ' PDF…');
-  setProgress(0.3);
-  var buf = await file.arrayBuffer();
-  var pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  var label = which === 'old' ? 'Old' : 'New';
+  setStatus('processing', 'Loading ' + label + ' PDF…');
+  setProgress(0.05);
+
+  // createObjectURL lets PDF.js stream directly from the File — no full
+  // ArrayBuffer copy needed, so the main thread is never blocked by a
+  // large file.read().  rangeChunkSize feeds data in 64 KB increments.
+  var url = URL.createObjectURL(file);
+  var task = pdfjsLib.getDocument({
+    url            : url,
+    rangeChunkSize : 65536,   // 64 KB streaming chunks
+    disableAutoFetch: true,   // don't eagerly fetch all pages upfront
+    disableStream  : false,   // keep streaming on
+  });
+
+  // Real progress bar while PDF.js reads the file
+  task.onProgress = function (p) {
+    if (p.total > 0) setProgress(0.05 + (p.loaded / p.total) * 0.88);
+  };
+
+  var pdf = await task.promise;
+  URL.revokeObjectURL(url);   // release blob memory
   setProgress(1);
   if (which === 'old') {
     pdfOld = pdf;
